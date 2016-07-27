@@ -76,24 +76,6 @@ namespace CameraTest
 
         }
 
-
-        private void DrawBorder(int v1, int v2, int v3, int v4)
-        {
-            int r1 = v2 - v1;
-            int c1 = v4 - v3;
-            groupBox1.Location = new Point(videoSourcePlayer1.Location.X + v1 * 3 / 8, videoSourcePlayer1.Location.Y + v3 * 3 / 8);
-            groupBox2.Location = new Point(videoSourcePlayer1.Location.X + v1 * 3 / 8, videoSourcePlayer1.Location.Y + v3 * 3 / 8);
-            groupBox3.Location = new Point(videoSourcePlayer1.Location.X + v1 * 3 / 8+r1*3/8, videoSourcePlayer1.Location.Y + v3 * 3 / 8);
-            groupBox4.Location = new Point(videoSourcePlayer1.Location.X + v1 * 3 / 8, videoSourcePlayer1.Location.Y + v3 * 3 / 8+c1*3/8);
-            groupBox1.Size = new Size(2, c1*3/8);
-            groupBox2.Size = new Size(r1 * 3 / 8, 2);
-            groupBox3.Size = new Size(2, c1 * 3 / 8);
-            groupBox4.Size = groupBox2.Size;
-
-
-        }
-
-
         private void comboBox1_SelectedIndexChanged(object sender, EventArgs e)
         {
 
@@ -391,16 +373,6 @@ namespace CameraTest
             StreamWriter sw = new StreamWriter("result.csv");
             sw.Write(ssss);
             sw.Close();
-        }
-
-        private Bitmap CutImage(Bitmap bit,Rectangle rect)
-        {
-            //截取试剂条区域
-            Bitmap b = new Bitmap(rect.Width, rect.Height, PixelFormat.Format32bppArgb);
-            Graphics g = Graphics.FromImage(b);
-            g.DrawImage(bit, 0, 0, rect, GraphicsUnit.Pixel);
-            g.Dispose();
-            return b;
         }
 
     }
