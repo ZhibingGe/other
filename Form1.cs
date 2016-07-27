@@ -63,10 +63,12 @@ namespace CameraTest
 
         private void button2_Click(object sender, EventArgs e)
         {
-            DirectoryInfo dr = new DirectoryInfo("img1/");
+            listBox1.Items.Clear();
+            DirectoryInfo dr = new DirectoryInfo("img/");
             FileInfo[] fr = dr.GetFiles();
             foreach (var item in fr)
             {
+                if(item.Name.IndexOf("-2")==-1)
                 listBox1.Items.Add(item.Name);
             }
 
@@ -91,7 +93,6 @@ namespace CameraTest
 
         }
 
-        string resullllt = "";
 
         private void comboBox1_SelectedIndexChanged(object sender, EventArgs e)
         {
@@ -101,14 +102,17 @@ namespace CameraTest
         private void listBox1_SelectedIndexChanged(object sender, EventArgs e)
         {
             //获取一帧图像
-            Bitmap bit =(Bitmap) Image.FromFile(Application.StartupPath+"/img1/"+listBox1.Text);
+            Bitmap bit =(Bitmap) Image.FromFile(Application.StartupPath+"/img/"+listBox1.Text);
             videoSourcePlayer1.BackgroundImage = bit;
-            var a=CalResult(bit);
+            var a=CalResult(bit,listBox1.Text);
             //CalResult1(bit);
-            MessageBox.Show(a);
+            if (MessageBox.Show(a, "", MessageBoxButtons.OKCancel) == DialogResult.OK)
+            {
+                File.Move(Application.StartupPath + "/img1/" + listBox1.Text, Application.StartupPath + "/img1/done/" + listBox1.Text);
+            }
         }
 
-        private string CalResult(Bitmap bit)
+        private string CalResult(Bitmap bit,string path)
         {
             //用于记录原始的解析信息
             var str = "";
@@ -118,24 +122,17 @@ namespace CameraTest
                 bit = new Grayscale(0.2125, 0.7154, 0.0721).Apply(bit);
                 //BitmapData 可以提高效率，直接读取灰度值的方法耗时800ms，bitmapdata只需要10ms。
                 var mapdata = BitToByte(bit);
-                //行相加，用于寻找左右方向边框
-                byte[] row = SumRow(mapdata, bit.Width, bit.Height);
-                chart1.Series[0].Points.Clear();
-                for (int i = 0; i < row.Length; i++)
-                {
-                    chart1.Series[0].Points.AddY(row[i]);
-                }
-                //列相加，用于寻找上下方向边框
+                //列相加
                 byte[] col = SumCol(mapdata, bit.Width, bit.Height);
+                //用于寻找上下方向边框
+                int[] colx = new int[2] { ColBorder(col) - 50, ColBorder(col) + 50 };
+                //行相加，用于寻找左右方向边框
+                byte[] row = SumRow(mapdata, bit.Width, colx[0],colx[1]);
                 //得到边框位置，如果为白色试剂片，需重新设计算法
-                int[] rowx = RowColBorder(row, row.Max() * 3 / 4 + row.Min() / 4, row.Max() *3/ 4 + row.Min() / 4);
-                int[] colx = RowColBorder(col, row.Max() * 3 / 4 + row.Min() / 4, col.Max() *3/ 4 + col.Min() / 4);
+                int[] rowx = RowBorder(row);
                 //考虑边缘阴影等，切除部分阴影
                 rowx[0] += 10;
                 rowx[1] -= 10;
-                colx[0] += 80;
-                colx[1] -= 80;
-                DrawBorder(rowx[0], rowx[1], colx[0], colx[1]);
                 //截取试剂条区域
                 Rectangle rect = new Rectangle(new Point(rowx[0], colx[0]), new Size((rowx[1] - rowx[0]) / 4 * 4, colx[1] - colx[0]));
                 Bitmap b = new Bitmap((rowx[1] - rowx[0]) / 4 * 4, colx[1] - colx[0], PixelFormat.Format32bppArgb);
@@ -146,32 +143,26 @@ namespace CameraTest
                 b = new Grayscale(0.2125, 0.7154, 0.0721).Apply(b);
                 //二值化处理
                 b = new Threshold(180).Apply(b);
+                pictureBox2.Image = b;
                 //取得新的截取后区域的值
                 mapdata = BitToByte(b);
                 //进行行相加
-                row = SumRow(mapdata, b.Width, b.Height);
+                row = SumRow(mapdata, b.Width, 0,b.Height);
                 col = SumCol(mapdata, b.Width, b.Height);
-
                 for (int i = 0; i < row.Length; i++)
                 {
                     row[i] = (byte)(row[i] > 128 ? 255 : 0);
                 }
-
                 //寻找左右两条参考黑线
                 int[] FirstEndX = LookFirstEndBlackLine(row);
                 double startx = FirstEndX[0];
                 double endx = FirstEndX[1];
-                if (endx - startx < 800)
-                { MessageBox.Show("Error");
-                    return "";
-                }
                 //24条线的线宽计算
                 double index = (int)((endx - startx + 1) / 24.00 + 0.5);
                 //黑白临界点位置
                 List<int> result = new List<int>();
                 //黑白线宽  交替
                 List<double> result1 = new List<double>();
-
                 int flag = 0;
                 result.Add((int)startx);
                 str = startx + ",";
@@ -270,7 +261,7 @@ namespace CameraTest
                         result2 = no.ToString("X6");
                     }
                 }
-                return result2;
+                return result2+","+(rowx[1]-rowx[0]).ToString()+","+(colx[1]-colx[0]).ToString();
             }
             catch (Exception ee)
             {
@@ -298,42 +289,47 @@ namespace CameraTest
             return x;
         }
 
-        private int[] RowColBorder(byte[] rowcol, int v, int v1)
+        private int ColBorder(byte[] col)
         {
-            int[] rowcolx = new int[2];
-            int[] rowcoly = new int[2] { 255, 255 };
-            for (int i = 20; i < v; i++)
+            int[] colx =new int[2];
+            for (int i = 15; i < col.Length - 300; i++)
             {
-                if (rowcol[i] < rowcoly[0])
+                if (col.Take(300 + i).Reverse().Take(300).Max() - col.Take(300 + i).Reverse().Take(300).Min() < 60)
                 {
-                    rowcoly[0] = rowcol[i];
-                    rowcolx[0] = i;
+                    colx[0] = i;break;
                 }
-                if (rowcol[rowcol.Length - 21 - i] < rowcoly[1])
+            }
+            col = col.Reverse().ToArray();
+            for (int i = 15; i < col.Length - 300; i++)
+            {
+                if (col.Take(300 + i).Reverse().Take(300).Max() - col.Take(300 + i).Reverse().Take(300).Min() < 60)
                 {
-                    rowcoly[1] = rowcol[rowcol.Length - 1 - i];
-                    rowcolx[1] = rowcol.Length - 1 - i;
+                    colx[1] = col.Length-1-i; break;
+                }
+            }
+            return (int)colx.Average();
+        }
+
+        private int[] RowBorder(byte[] row)
+        {
+            int[] rowx = new int[2];
+            for (int i = 15; i < row.Length - 15; i++)
+            {
+                if (row.Take(i + 15).Reverse().Take(30).Max() == row[i]&row[i]+40>row.Max())
+                {
+                    rowx[0] = i;break;
                 }
             }
 
-            for (int i = rowcolx[0]; i < rowcolx[1]; i++)
+            row = row.Reverse().ToArray();
+            for (int i = 15; i < row.Length - 15; i++)
             {
-                if (rowcol[i] > v1)
+                if (row.Take(i + 15).Reverse().Take(30).Max() == row[i] & row[i] + 40 > row.Max())
                 {
-                    rowcolx[0] = i;
-                    break;
+                    rowx[1] =row.Length-1- i;break;
                 }
             }
-
-            for (int i = rowcolx[1]; i > rowcolx[0]; i--)
-            {
-                if (rowcol[i] > v1)
-                {
-                    rowcolx[1] = i;
-                    break;
-                }
-            }
-            return rowcolx;
+            return rowx;
         }
 
         private byte[] SumCol(byte[] rawdata, int width, int height)
@@ -352,17 +348,17 @@ namespace CameraTest
             return col;
         }
 
-        private byte[] SumRow(byte[] rawdata, int width, int height)
+        private byte[] SumRow(byte[] rawdata, int width, int col1,int col2)
         {
             var row = new byte[width];
             for (int i = 0; i < width; i++)
             {
                 var data = 0;
-                for (int j = 0; j < height; j++)
+                for (int j = col1; j < col2; j++)
                 {
                     data += rawdata[i + width * j];
                 }
-                data /= height;
+                data /= (col2-col1);
                 row[i] = (byte)data;
             }
             return row;
@@ -382,20 +378,30 @@ namespace CameraTest
         }
         private void button3_Click(object sender, EventArgs e)
         {
-            var ssss = DateTime.Now.ToString("mm.ss.fff");
+            var ssss = "";
             for (int i = 0; i < listBox1.Items.Count; i++)
             {
                 //获取一帧图像
-                Bitmap bit = (Bitmap)Image.FromFile(Application.StartupPath + "/img1/" + listBox1.Items[i].ToString());
+                Bitmap bit = (Bitmap)Image.FromFile(Application.StartupPath + "/img/" + listBox1.Items[i].ToString());
                 videoSourcePlayer1.BackgroundImage = bit;
-                CalResult1(bit);
+                ssss+=listBox1.Items[i].ToString()+","+ CalResult(bit,listBox1.Items[i].ToString())+"\r\n";
+                Text = (i * 1000 / listBox1.Items.Count).ToString();
                 ///resullllt+= CalResult(bit)+"\r\n";
             }
             StreamWriter sw = new StreamWriter("result.csv");
-            sw.Write(resullllt);
+            sw.Write(ssss);
             sw.Close();
-            ssss+="\r\n"+ DateTime.Now.ToString("mm.ss.fff");
-            MessageBox.Show(ssss);
         }
+
+        private Bitmap CutImage(Bitmap bit,Rectangle rect)
+        {
+            //截取试剂条区域
+            Bitmap b = new Bitmap(rect.Width, rect.Height, PixelFormat.Format32bppArgb);
+            Graphics g = Graphics.FromImage(b);
+            g.DrawImage(bit, 0, 0, rect, GraphicsUnit.Pixel);
+            g.Dispose();
+            return b;
+        }
+
     }
 }
